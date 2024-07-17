@@ -1,0 +1,12 @@
+{
+    "rules": [
+      {
+        "pathPattern": "/donation/**",
+        "apiPath": "http://localhost:5000/api/actions/donation/**"
+      },
+      {
+        "pathPattern": "/dao/**",
+        "apiPath": "http://localhost:5000/api/actions/dao/**"
+      }
+    ]
+  }

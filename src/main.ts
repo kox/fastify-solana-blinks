@@ -3,6 +3,7 @@ import pino from 'pino';
 import daoRouter from './routes/dao.router';
 import donateRouter from './routes/donate.router';
 import path from 'node:path';
+import fs from 'fs';
 
 /* import userRouter from './routes/user.router';
 import postRouter from './routes/post.router';*/
@@ -33,7 +34,9 @@ const startServer = async () => {
       'Content-Type, Accept, Access-Control-Allow-Origin, Access-Control-Allow-Methods',
     credentials: true,
   });
-  server.register(helmet);
+  server.register(helmet, {
+    crossOriginResourcePolicy: false,
+  });
 
   
   server.register(require('@fastify/static'), {
@@ -43,6 +46,7 @@ const startServer = async () => {
     //constraints: {},
     // constraints: { host: 'example.com' }  optional: default {}
   })
+  
 
   // Register routes
   server.register(daoRouter, { prefix: '/api/actions/dao' })
@@ -52,6 +56,17 @@ const startServer = async () => {
   server.setErrorHandler((error, _request, reply) => {
     server.log.error(error);
     reply.status(500).send({ error: 'Something went wrong' });
+  });
+
+  // Route to serve actions.json
+  server.get('/actions.json', async (_request, reply) => {
+    try {
+      const data = fs.readFileSync(path.join(__dirname, '../actions_json/actions.json'), 'utf-8');
+      reply.header('Content-Type', 'application/json').send(data);
+    } catch (err) {
+      server.log.error(err);
+      reply.status(500).send({ error: 'Failed to read actions.json' });
+    }
   });
 
 
