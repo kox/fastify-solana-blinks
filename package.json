@@ -21,6 +21,7 @@
     "@fastify/helmet": "^11.1.1",
     "@fastify/static": "^7.0.4",
     "@metaplex-foundation/mpl-token-metadata": "3.1.1",
+    "@metaplex-foundation/mpl-toolbox": "^0.9.4",
     "@metaplex-foundation/umi": "^0.8.10",
     "@metaplex-foundation/umi-bundle-defaults": "^0.8.10",
     "@metaplex-foundation/umi-uploader-irys": "^0.9.1",

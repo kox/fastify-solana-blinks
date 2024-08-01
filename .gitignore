@@ -63,3 +63,5 @@ build/
 dist
 
 src/routes/downloads
+
+*wallet.json

@@ -19,7 +19,35 @@ import {
   PublicKey,
   Transaction,
   TransactionInstruction,
+  VersionedTransaction,
+  SystemProgram,
+  TransactionMessage,
 } from '@solana/web3.js';
+import { createUmi } from '@metaplex-foundation/umi-bundle-defaults';
+import {
+  createGenericFile,
+  createSignerFromKeypair,
+  generateSigner,
+  Instruction,
+  percentAmount,
+  signerIdentity,
+  transactionBuilder,
+  TransactionBuilder,
+} from '@metaplex-foundation/umi';
+import wallet from '../../wba-wallet.json';
+import { irysUploader } from '@metaplex-foundation/umi-uploader-irys';
+import {
+  createNft,
+  mplTokenMetadata,
+} from '@metaplex-foundation/mpl-token-metadata';
+import {
+  fromWeb3JsInstruction,
+  fromWeb3JsTransaction,
+  toWeb3JsInstruction,
+  toWeb3JsKeypair,
+  toWeb3JsTransaction,
+} from '@metaplex-foundation/umi-web3js-adapters';
+import { setComputeUnitLimit } from '@metaplex-foundation/mpl-toolbox';
 
 const downloadPath = path.resolve(__dirname, 'downloads');
 
@@ -29,9 +57,9 @@ if (!fs.existsSync(downloadPath)) {
 }
 
 // Function to copy the file using UUID
-const copyFileWithUUID = (sourcePath) => {
-  const id = uuidv4();
-  const newFilename = `${uuidv4()}.png`;
+const copyFileWithUUID = (sourcePath, id) => {
+  // const id = uuidv4();
+  const newFilename = `${id}.png`;
   const newPath = path.join(path.dirname(sourcePath), newFilename);
   fs.copyFile(sourcePath, newPath, (err) => {
     if (err) throw err;
@@ -40,6 +68,10 @@ const copyFileWithUUID = (sourcePath) => {
 
   return id;
 };
+
+function delay(milliseconds) {
+  return new Promise((resolve) => setTimeout(resolve, milliseconds));
+}
 
 async function generateRug(fastify: FastifyInstance) {
   fastify.route({
@@ -86,54 +118,123 @@ async function generateRug(fastify: FastifyInstance) {
           waitUntil: 'networkidle2',
         });
 
-        console.log('goto');
         const searchResultSelector = 'a#downloadLink';
         await page.waitForSelector(searchResultSelector);
-        console.log('waitfor');
         await page.click(searchResultSelector);
+        await delay(1000); // Delay for 1 second (1000 milliseconds)
 
-        console.log('click');
-
-        const generugId = await copyFileWithUUID(
-          `${downloadPath}\\generug.png`,
-        );
-
-        console.log(generugId);
+        await copyFileWithUUID(`${downloadPath}\\generug.png`, id);
 
         const body = request.body as ActionPostRequest;
 
-        let account: PublicKey;
-        account = new PublicKey(body.account);
-
-        const transaction = new Transaction();
-
-        transaction.add(
-          ComputeBudgetProgram.setComputeUnitPrice({
-            microLamports: 1000,
-          }),
-          new TransactionInstruction({
-            programId: new PublicKey(MEMO_PROGRAM_ID),
-            data: Buffer.from('this is a simple memo message', 'utf8'),
-            keys: [],
-          }),
-        );
-
-        transaction.feePayer = account;
+        const account = new PublicKey(body.account);
 
         const connection = new Connection(clusterApiUrl('devnet'));
-        transaction.recentBlockhash = (
-          await connection.getLatestBlockhash()
-        ).blockhash;
 
-        const RPC_ENDPOINT = "https://api.devnet.solana.com";
+        const RPC_ENDPOINT = 'https://api.devnet.solana.com';
         const umi = createUmi(RPC_ENDPOINT);
 
-        const payload: ActionPostResponse = await createPostResponse({
-          fields: {
-            transaction,
-            message: 'Thanks for the coffee',
+        const keypair = umi.eddsa.createKeypairFromSecretKey(
+          new Uint8Array(wallet.secret_key),
+        );
+        const signer = createSignerFromKeypair(umi, keypair);
+
+        umi.use(irysUploader());
+        umi.use(signerIdentity(signer));
+        umi.use(mplTokenMetadata());
+
+        const imageSrc = `${downloadPath}\\${id}.png`;
+
+        console.log('Image Src: ', imageSrc);
+
+        const imageFile = fs.readFileSync(imageSrc);
+
+        const umiImageFile = createGenericFile(imageFile, `${id}.png`, {
+          tags: [{ name: 'Content-Type', value: 'image/png' }],
+        });
+
+        const imageUri = await umi.uploader
+          .upload([umiImageFile])
+          .catch((err) => {
+            throw new Error(err);
+          });
+
+        console.log(imageUri);
+
+        const metadata = {
+          name: 'WBA GENERUG',
+          symbol: 'WGRUG',
+          description:
+            'Your personal generator of RUGs created Dean and blinked by kox',
+          image: imageUri[0],
+          external_url: 'https://deanmlittle.github.io/generug/',
+          attributes: [],
+          properties: {
+            files: [
+              {
+                type: 'image/png',
+                uri: imageUri[0],
+              },
+            ],
           },
-          // signers: []
+          creators: [
+            {
+              address: wallet.pubkey,
+              share: 100,
+            },
+          ],
+        };
+
+        const metadataUri = await umi.uploader
+          .uploadJson(metadata)
+          .catch((err) => {
+            throw new Error(err);
+          });
+
+        console.log('Your metadata URI: ', metadataUri);
+
+        const lastBlockhash = await connection.getLatestBlockhash();
+        const mint = generateSigner(umi);
+        const timestamp = Date.now();
+        console.log('mint pubkey: ', mint.publicKey);
+
+        const createNftTransactionBuilder: TransactionBuilder = createNft(umi, {
+          mint,
+          name: `WBA GENERUG ${timestamp}`,
+          uri: metadataUri,
+          sellerFeeBasisPoints: percentAmount(5.5),
+        });
+        // setting lastest blockhash
+        createNftTransactionBuilder.setBlockhash(lastBlockhash.blockhash);
+        // Get only instructions as umi signer is different than action signer
+        const instructions = createNftTransactionBuilder.getInstructions();
+        // Convert intestruction to old Web
+        const web3Instruction: TransactionInstruction = toWeb3JsInstruction(
+          instructions[0],
+        );
+        // Create a Transaction Message and convert it to VersionedMessage
+        const messageV0 = new TransactionMessage({
+          payerKey: account,
+          recentBlockhash: lastBlockhash.blockhash,
+          instructions: [web3Instruction],
+        }).compileToV0Message();
+        // Createa a VersionedTransaction
+        const transactionWithLookupTable = new VersionedTransaction(messageV0);
+        // Sign the transaction with the mint authority (server-side signer)
+
+        const mintKeypair = toWeb3JsKeypair(mint);
+        const walletKeypair = toWeb3JsKeypair(keypair);
+
+        transactionWithLookupTable.sign([mintKeypair, walletKeypair]);
+
+        console.log('signatures');
+        console.log(transactionWithLookupTable.signatures);
+        // Create the payload to return to the blink
+        const payload = await createPostResponse({
+          fields: {
+            transaction: transactionWithLookupTable,
+            message: 'Congrats for Generug minting',
+          },
         });
 
         console.log(payload);
@@ -142,8 +243,13 @@ async function generateRug(fastify: FastifyInstance) {
           .code(STANDARD.ACCEPTED.statusCode)
           .headers(ACTIONS_CORS_HEADERS as Record<string, string>)
           .send(payload);
-      } catch (err) {
-        console.log(err);
+      } catch (error) {
+        console.log(error);
+
+        if (hasGetLogsMethod(error)) {
+          const logs = await error.getLogs();
+          console.error('Transaction logs: ', logs);
+        }
       }
 
       return reply
@@ -151,6 +257,12 @@ async function generateRug(fastify: FastifyInstance) {
         .headers(ACTIONS_CORS_HEADERS as Record<string, string>);
     },
   );
+}
+
+function hasGetLogsMethod(
+  error: unknown,
+): error is { getLogs: () => Promise<string[]> } {
+  return typeof error === 'object' && error !== null && 'getLogs' in error;
 }
 
 export default generateRug;
