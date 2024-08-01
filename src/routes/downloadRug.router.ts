@@ -15,23 +15,20 @@ import { v4 as uuidv4 } from 'uuid';
 import {
   Connection,
   clusterApiUrl,
-  ComputeBudgetProgram,
   PublicKey,
-  Transaction,
   TransactionInstruction,
   VersionedTransaction,
-  SystemProgram,
   TransactionMessage,
 } from '@solana/web3.js';
 import { createUmi } from '@metaplex-foundation/umi-bundle-defaults';
 import {
   createGenericFile,
+  createNoopSigner,
   createSignerFromKeypair,
   generateSigner,
-  Instruction,
   percentAmount,
+  publicKey,
   signerIdentity,
-  transactionBuilder,
   TransactionBuilder,
 } from '@metaplex-foundation/umi';
 import wallet from '../../wba-wallet.json';
@@ -41,13 +38,9 @@ import {
   mplTokenMetadata,
 } from '@metaplex-foundation/mpl-token-metadata';
 import {
-  fromWeb3JsInstruction,
-  fromWeb3JsTransaction,
   toWeb3JsInstruction,
   toWeb3JsKeypair,
-  toWeb3JsTransaction,
 } from '@metaplex-foundation/umi-web3js-adapters';
-import { setComputeUnitLimit } from '@metaplex-foundation/mpl-toolbox';
 
 const downloadPath = path.resolve(__dirname, 'downloads');
 
@@ -198,12 +191,20 @@ async function generateRug(fastify: FastifyInstance) {
         const timestamp = Date.now();
         console.log('mint pubkey: ', mint.publicKey);
 
-        const createNftTransactionBuilder: TransactionBuilder = createNft(umi, {
-          mint,
-          name: `WBA GENERUG ${timestamp}`,
-          uri: metadataUri,
-          sellerFeeBasisPoints: percentAmount(5.5),
-        });
+        const frontendUmi = createUmi(RPC_ENDPOINT);
+        const frontendSigner = createNoopSigner(publicKey(account));
+        frontendUmi.use(signerIdentity(frontendSigner));
+        frontendUmi.use(mplTokenMetadata());
+
+        const createNftTransactionBuilder: TransactionBuilder = createNft(
+          frontendUmi,
+          {
+            mint,
+            name: `WBA GENERUG ${timestamp}`,
+            uri: metadataUri,
+            sellerFeeBasisPoints: percentAmount(5.5),
+          },
+        );
         // setting lastest blockhash
         createNftTransactionBuilder.setBlockhash(lastBlockhash.blockhash);
         // Get only instructions as umi signer is different than action signer
@@ -223,9 +224,10 @@ async function generateRug(fastify: FastifyInstance) {
         // Sign the transaction with the mint authority (server-side signer)
 
         const mintKeypair = toWeb3JsKeypair(mint);
-        const walletKeypair = toWeb3JsKeypair(keypair);
+        transactionWithLookupTable.sign([mintKeypair]);
+        /* const walletKeypair = toWeb3JsKeypair(keypair); */
 
-        transactionWithLookupTable.sign([mintKeypair, walletKeypair]);
+        /* transactionWithLookupTable.sign([mintKeypair, walletKeypair]); */
 
         console.log('signatures');
         console.log(transactionWithLookupTable.signatures);
