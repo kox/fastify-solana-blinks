@@ -2,12 +2,14 @@ import fastify from 'fastify';
 import pino from 'pino';
 import daoRouter from './routes/dao.router';
 import donateRouter from './routes/donate.router';
+import generug from './routes/generug.router';
+import downloadRug from './routes/downloadRug.router';
 import path from 'node:path';
 import fs from 'fs';
 
 /* import userRouter from './routes/user.router';
 import postRouter from './routes/post.router';*/
-import loadConfig from './config/env.config'; 
+import loadConfig from './config/env.config';
 /* import { utils } from './utils';
 import formbody from '@fastify/formbody'; */
 import cors from '@fastify/cors';
@@ -38,7 +40,7 @@ const startServer = async () => {
     crossOriginResourcePolicy: false,
   });
 
-  
+
   server.register(require('@fastify/static'), {
     root: path.join(__dirname, '../public'),
     prefix: '/public/', // optional: default '/'
@@ -46,11 +48,13 @@ const startServer = async () => {
     //constraints: {},
     // constraints: { host: 'example.com' }  optional: default {}
   })
-  
+
 
   // Register routes
-  server.register(daoRouter, { prefix: '/api/actions/dao' })
-  server.register(donateRouter, { prefix: '/api/actions/donate' })
+  server.register(daoRouter, { prefix: '/api/actions/dao' });
+  server.register(donateRouter, { prefix: '/api/actions/donate' });
+  server.register(generug, { prefix: '/api/actions/generug' });
+  server.register(downloadRug, { prefix: '/api/actions/download-rug' });
 
   // Set error handler
   server.setErrorHandler((error, _request, reply) => {

@@ -26,7 +26,8 @@
     "dotenv-cli": "^7.4.2",
     "fastify": "^4.28.1",
     "joi": "^17.13.3",
-    "pino": "^9.2.0"
+    "pino": "^9.2.0",
+    "puppeteer": "^22.15.0"
   },
   "devDependencies": {
     "@types/eslint": "8.56.10",
