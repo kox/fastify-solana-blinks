@@ -61,3 +61,5 @@ build/
 
 .env
 dist
+
+src/routes/downloads
