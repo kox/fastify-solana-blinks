@@ -94,8 +94,6 @@ async function generateRug(fastify: FastifyInstance) {
       try {
         const id = uuidv4();
 
-        console.log(id);
-
         // Launch Puppeteer
         const browser = await puppeteer.launch({ headless: true });
         const page = await browser.newPage();
@@ -125,8 +123,11 @@ async function generateRug(fastify: FastifyInstance) {
         const connection = new Connection(clusterApiUrl('devnet'));
 
         const RPC_ENDPOINT = 'https://api.devnet.solana.com';
-        const umi = createUmi(RPC_ENDPOINT);
 
+        /**
+         * Upload Umi
+         */
+        const umi = createUmi(RPC_ENDPOINT);
         const keypair = umi.eddsa.createKeypairFromSecretKey(
           new Uint8Array(wallet.secret_key),
         );
@@ -136,24 +137,23 @@ async function generateRug(fastify: FastifyInstance) {
         umi.use(signerIdentity(signer));
         umi.use(mplTokenMetadata());
 
+        /**
+         * Upload image
+         */
         const imageSrc = `${downloadPath}\\${id}.png`;
-
-        console.log('Image Src: ', imageSrc);
-
         const imageFile = fs.readFileSync(imageSrc);
-
         const umiImageFile = createGenericFile(imageFile, `${id}.png`, {
           tags: [{ name: 'Content-Type', value: 'image/png' }],
         });
-
         const imageUri = await umi.uploader
           .upload([umiImageFile])
           .catch((err) => {
             throw new Error(err);
           });
 
-        console.log(imageUri);
-
+        /**
+         * Upload Metadata
+         */
         const metadata = {
           name: 'WBA GENERUG',
           symbol: 'WGRUG',
@@ -177,20 +177,19 @@ async function generateRug(fastify: FastifyInstance) {
             },
           ],
         };
-
         const metadataUri = await umi.uploader
           .uploadJson(metadata)
           .catch((err) => {
             throw new Error(err);
           });
 
-        console.log('Your metadata URI: ', metadataUri);
-
         const lastBlockhash = await connection.getLatestBlockhash();
         const mint = generateSigner(umi);
         const timestamp = Date.now();
-        console.log('mint pubkey: ', mint.publicKey);
 
+        /**
+         * Frontend Umi. Uses Noop signer for the Blink account
+         */
         const frontendUmi = createUmi(RPC_ENDPOINT);
         const frontendSigner = createNoopSigner(publicKey(account));
         frontendUmi.use(signerIdentity(frontendSigner));
@@ -205,19 +204,16 @@ async function generateRug(fastify: FastifyInstance) {
             sellerFeeBasisPoints: percentAmount(5.5),
           },
         );
+
         // setting lastest blockhash
         createNftTransactionBuilder.setBlockhash(lastBlockhash.blockhash);
         // Get only instructions as umi signer is different than action signer
         const instructions = createNftTransactionBuilder.getInstructions();
-        // Convert intestruction to old Web
-        const web3Instruction: TransactionInstruction = toWeb3JsInstruction(
-          instructions[0],
-        );
         // Create a Transaction Message and convert it to VersionedMessage
         const messageV0 = new TransactionMessage({
           payerKey: account,
           recentBlockhash: lastBlockhash.blockhash,
-          instructions: [web3Instruction],
+          instructions: instructions.map((ix) => toWeb3JsInstruction(ix)),
         }).compileToV0Message();
         // Createa a VersionedTransaction
         const transactionWithLookupTable = new VersionedTransaction(messageV0);
